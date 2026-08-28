@@ -107,11 +107,65 @@ def enum_for(object_info, cls, field):
     return value if isinstance(value, list) else None
 
 
-def check_online(object_info, node_types, models):
+# Input datatypes that arrive over a link and therefore occupy no widget slot.
+LINK_TYPES = {"IMAGE", "MASK", "LATENT", "MODEL", "CLIP", "VAE", "CONDITIONING",
+              "GUIDER", "SAMPLER", "SIGMAS", "NOISE", "UPSCALE_MODEL", "CONTROL_NET",
+              "CLIP_VISION", "CLIP_VISION_OUTPUT", "STYLE_MODEL", "CROP_DATA", "*"}
+
+
+def widget_arity(object_info, cls):
+    """How many widgets_values entries a node's required inputs demand."""
+    try:
+        required = object_info[cls]["input"]["required"]
+    except (KeyError, TypeError):
+        return None
+    count = 0
+    for value in required.values():
+        spec = value[0] if isinstance(value, list) and value else None
+        if isinstance(spec, list):        # an enum is always a widget
+            count += 1
+        elif isinstance(spec, str) and spec not in LINK_TYPES and not spec.startswith("COMFY_"):
+            count += 1
+    return count
+
+
+def check_widget_arity(object_info, nodes):
+    """Catch saved widget arrays that are SHORTER than the node now requires.
+
+    Measured 2026-08-28: a node gained a `crop_mode` input, so every value saved
+    after it shifted one slot and ComfyUI rejected the whole prompt with
+    prompt_outputs_failed_validation - nothing ever reached the queue. Every node
+    type resolved and every model was present, so a check that only looks at
+    those reports a clean install for a graph that cannot run.
+
+    Only "too short" is a fault. Arrays are routinely LONGER than the required
+    count: the frontend appends control_after_generate to seed and int widgets,
+    and optional inputs take slots too. Flagging those would drown the real one.
+    """
+    problems = []
+    for n in nodes:
+        cls = n.get("type")
+        vals = n.get("widgets_values")
+        if cls not in object_info or not isinstance(vals, list):
+            continue
+        want = widget_arity(object_info, cls)
+        if want is None or len(vals) >= want:
+            continue
+        problems.append(
+            "node %s (%s) saved %d widget values but the installed node requires %d - "
+            "the graph was saved against a different version of that node and ComfyUI "
+            "will refuse the prompt" % (n.get("id"), cls, len(vals), want)
+        )
+    return problems
+
+
+def check_online(object_info, node_types, models, nodes=None):
     problems = []
     missing_nodes = [t for t in node_types if t not in object_info]
     for t in missing_nodes:
         problems.append("node type not registered: %s" % t)
+    if nodes:
+        problems.extend(check_widget_arity(object_info, nodes))
     for cls, field, _subdir, name in models:
         if cls in missing_nodes:
             continue  # already reported; its enum cannot exist
@@ -237,6 +291,20 @@ def self_test():
     except Unknown:
         pass
 
+    # control 6a: a saved widget array shorter than the node now requires must
+    # be caught. This is what a node gaining an input does to an old graph.
+    oi_arity = {"N": {"input": {"required": {
+        "img": ["IMAGE"], "a": ["BOOLEAN"], "b": [["x", "y"]], "c": ["INT"]}}}}
+    short = [{"id": 1, "type": "N", "widgets_values": [True, "x"]}]          # 2 < 3
+    exact = [{"id": 2, "type": "N", "widgets_values": [True, "x", 5]}]       # 3 == 3
+    longer = [{"id": 3, "type": "N", "widgets_values": [True, "x", 5, "randomize"]}]
+    if not check_widget_arity(oi_arity, short):
+        failures.append("control 6a: a too-short widget array was not caught")
+    if check_widget_arity(oi_arity, exact):
+        failures.append("control 6a: an exact-length widget array was flagged")
+    if check_widget_arity(oi_arity, longer):
+        failures.append("control 6a: control_after_generate made a valid array look wrong")
+
     # control 6: the offline mode must never be able to award a PASS, because it
     # cannot see whether a node registered. Regression guard for a measured
     # incident on 2026-08-28, where offline reported PASS on a tree whose online
@@ -260,7 +328,7 @@ def self_test():
         for f in failures:
             print("  - %s" % f)
         return FAIL
-    print("SELF-TEST OK - 6 controls, 3 mandatory-red plus the offline-cannot-PASS guard")
+    print("SELF-TEST OK - 7 controls: 3 mandatory-red, the widget-arity guard, the offline-cannot-PASS guard")
     return PASS
 
 
@@ -295,7 +363,7 @@ def main(argv=None):
             can_pass = False
         else:
             oi = fetch_object_info(args.url, args.timeout)
-            problems, n_nodes, n_models = check_online(oi, node_types, models)
+            problems, n_nodes, n_models = check_online(oi, node_types, models, nodes)
             mode = "online via %s/object_info" % args.url.rstrip("/")
     except Unknown as exc:
         print("UNKNOWN - the check did not run: %s" % exc)
