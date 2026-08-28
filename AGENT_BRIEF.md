@@ -93,11 +93,28 @@ ComfyUI actually runs with**, which is often not the `python3` on `PATH`:
 `insightface` builds native code; on a machine with no compiler, install a
 prebuilt wheel instead of letting pip try to build it.
 
-## After installing, restart ComfyUI
+## After installing, ComfyUI has to be restarted — but maybe not the one that matters
 
-ComfyUI enumerates `models/` at startup. A model downloaded into a running
-instance does not appear in the dropdowns until it restarts. If `verify.py`
-reports a model missing that you just downloaded, restart before debugging.
+ComfyUI enumerates `models/` and loads `custom_nodes/` at startup. Anything you
+just installed is invisible to a process that was already running. If `verify.py`
+reports something missing that you know you downloaded, restart before debugging.
+
+**If the ComfyUI on this machine is doing real work, do not bounce it.** You do
+not need to. Start a second, throwaway instance from the same tree — it reads the
+same `custom_nodes/` and `models/`, so it answers `/object_info` with exactly what
+a restarted server would, while the busy one keeps its GPU and its queue:
+
+```bash
+cd /path/to/ComfyUI
+./venv/bin/python main.py --cpu --port 8199 --disable-auto-launch &
+# wait for it to finish loading, then:
+python scripts/verify.py --url http://127.0.0.1:8199
+kill %1
+```
+
+`--cpu` is the point: it touches no VRAM, so it cannot disturb a running job.
+Pick a port nothing is listening on. If the machine is idle, a plain restart is
+fine and simpler.
 
 ## Four things that download themselves, and the one that bites
 
