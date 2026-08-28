@@ -27,9 +27,17 @@ not done when it prints something reassuring — read the exit code.
 1. Find the ComfyUI root — the directory that contains `main.py`, `models/` and
    `custom_nodes/`. Do not guess it; confirm `main.py` is there.
 2. Confirm the ComfyUI build has FLUX.2 support. The workflow needs the core
-   nodes `Flux2Scheduler`, `EmptyFlux2LatentImage` and `ReferenceLatent`. On a
-   running instance: `curl -s localhost:8188/object_info | grep -c Flux2Scheduler`.
-   If it is `0`, update ComfyUI first — nothing else you do will help.
+   nodes `Flux2Scheduler`, `EmptyFlux2LatentImage` and `ReferenceLatent`. Against
+   a running instance, on *its* port — find it with `ss -ltnp | grep python`
+   rather than assuming 8188:
+
+   ```bash
+   curl -s "http://127.0.0.1:$PORT/object_info" | grep -c Flux2Scheduler
+   ```
+
+   If it answers `0`, update ComfyUI first — nothing else you do will help. If it
+   answers `401` or refuses the connection, you are not talking to the ComfyUI you
+   think you are; find the right port before drawing any conclusion.
 3. Check free disk. The models total roughly **28 GB**; the Klein checkpoint
    alone is 18 GB. If the volume has less than 35 GB free, stop and say so
    rather than filling the disk.
