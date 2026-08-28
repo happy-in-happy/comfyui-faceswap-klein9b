@@ -42,7 +42,14 @@ rather than run it yourself — it is written to be pasted verbatim.
 
 The remaining 31 node types are ComfyUI core — but they include `Flux2Scheduler`,
 `EmptyFlux2LatentImage` and `ReferenceLatent`, so **a build with FLUX.2 support
-is mandatory**. Verified on ComfyUI 0.20.1 / Python 3.12 / torch 2.11.
+is mandatory**. The graph was authored on ComfyUI 0.13.0 (recorded in
+`extra.node_versions` inside the JSON); this requirement list was verified
+against a running ComfyUI 0.20.1 / Python 3.12 / torch 2.11.
+
+`extra.node_versions` also names three packs the graph never instantiates —
+`ComfyUI-Easy-Use`, `ComfyUI-GGUF`, `comfyui-inpaint-nodes`. That is leftover
+metadata from the authoring machine's install, not a dependency.
+`manifest.json` is the contract: install what it lists, nothing more.
 
 ### Models — about 28 GB
 

@@ -29,15 +29,15 @@ def _get_font(size, mono=False):
     """Get a font. Prefers sans-serif for labels, mono for code/debug."""
     if Image is None:
         return None
-    # Try models mount first (Docker containers with WekaFS)
-    # Path: happyin-comfyui-nodes -> custom_nodes -> ComfyUI -> models
+    # Try models mount first (containerised installs with a mounted models dir)
+    # Path: <this pack> -> custom_nodes -> ComfyUI -> models
     _models_font = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "..", "..", "models", "_fonts_DejaVuSans.ttf")
 
     if mono:
         families = [
-            _models_font,  # WekaFS mount fallback
+            _models_font,  # models-mount fallback
             # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             "/usr/share/fonts/truetype/custom/DejaVuSans.ttf",
@@ -49,7 +49,7 @@ def _get_font(size, mono=False):
         ]
     else:
         families = [
-            _models_font,  # WekaFS mount fallback
+            _models_font,  # models-mount fallback
             # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

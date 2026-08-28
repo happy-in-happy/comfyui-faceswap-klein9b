@@ -9250,8 +9250,7 @@
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
           "version": "7.5.2"
-        },
-        "image": "clipspace/clipspace-painted-masked-1769925124507.png [input]"
+        }
       },
       "widgets_values": [
         "result_00.jpg",
@@ -13234,7 +13233,6 @@
       "comfy-core": "0.13.0",
       "ComfyUI_essentials": "33ff89fd354d8ec3ab6affb605a79a931b445d99",
       "ComfyUI_LayerStyle": "366cd886197037baf399ca6d7baa05f32008f4f3",
-      "happyin-comfyui-nodes": "a900fc9d66724db8b2086ea454e1f06c6ac70799",
       "was-node-suite-comfyui": "e036c1aa1b228c31473f78e020f47f0ce94d4c80",
       "Comfyui-PainterFluxImageEdit": "8b25957c6ba31a697ad5608f93f035d4d93cc5ab",
       "ComfyUI-Easy-Use": "acfdd7713c7fb4793af0accba76741bf2b72c7b5",
