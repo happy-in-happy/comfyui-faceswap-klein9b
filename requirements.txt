@@ -1,0 +1,12 @@
+# pip dependencies of the bundled happyin_faceswap_nodes pack.
+# Install into the interpreter ComfyUI actually runs with, which is often not
+# the python3 on PATH:  /path/to/comfy/venv/bin/python -m pip install -r requirements.txt
+mediapipe
+pymatting
+insightface
+opencv-python
+transformers
+spandrel
+numpy
+pillow
+huggingface_hub

@@ -1,0 +1,199 @@
+{
+  "schema": "comfyui-workflow-requirements/v1",
+  "name": "face-swap-flux2-klein-9b",
+  "description": "Everything required to load and run the Face Swap (FLUX.2 Klein 9B) ComfyUI workflow.",
+  "workflow": {
+    "path": "workflow/face_swap_klein_9b.json",
+    "nodes": 190,
+    "links": 279,
+    "distinct_node_types": 53,
+    "muted_or_bypassed_nodes": 0
+  },
+  "runtime": {
+    "comfyui_version_verified_on": "0.20.1",
+    "python_verified_on": "3.12.3",
+    "torch_verified_on": "2.11.0+cu130",
+    "note": "Core nodes Flux2Scheduler, EmptyFlux2LatentImage and ReferenceLatent are required, so a ComfyUI build with FLUX.2 support is mandatory. Older builds will fail to load the graph."
+  },
+  "node_packs": [
+    {
+      "id": "happyin_faceswap_nodes",
+      "source": "bundled",
+      "path": "custom_nodes/happyin_faceswap_nodes",
+      "install": "copy the directory into ComfyUI/custom_nodes/",
+      "provides": [
+        "Happyin_Camera_ContactSheet",
+        "Happyin_Color_ColorTransfer",
+        "Happyin_Detect_PasteBack",
+        "Happyin_Image_AutoUpscale",
+        "Happyin_Mask_MaskExpand",
+        "Happyin_Mask_PersonMask",
+        "Happyin_PixelAlign_LatentSizeSnap",
+        "Happyin_Router_HeadwearGate",
+        "Happyin_Router_ImageGate",
+        "Happyin_Utils_BlackImage",
+        "Happyin_Utils_BWGate",
+        "Happyin_Utils_ImagePick"
+      ],
+      "instances_in_workflow": 37,
+      "pip": [
+        "mediapipe",
+        "pymatting",
+        "insightface",
+        "opencv-python",
+        "transformers",
+        "spandrel",
+        "numpy",
+        "pillow"
+      ]
+    },
+    {
+      "id": "comfyui-florence2",
+      "source": "git",
+      "repo": "https://github.com/kijai/ComfyUI-Florence2",
+      "registry_version": "1.0.8",
+      "provides": [
+        "DownloadAndLoadFlorence2Model",
+        "Florence2Run"
+      ],
+      "instances_in_workflow": 2
+    },
+    {
+      "id": "comfyui_layerstyle",
+      "source": "git",
+      "repo": "https://github.com/chflame163/ComfyUI_LayerStyle",
+      "registry_version": "2.0.38",
+      "provides": [
+        "LayerUtility: ImageScaleByAspectRatio V2"
+      ],
+      "instances_in_workflow": 4
+    },
+    {
+      "id": "comfyui_essentials",
+      "source": "git",
+      "repo": "https://github.com/cubiq/ComfyUI_essentials",
+      "registry_version": "1.1.0",
+      "provides": [
+        "MaskPreview+"
+      ],
+      "instances_in_workflow": 1
+    },
+    {
+      "id": "was-node-suite-comfyui",
+      "source": "git",
+      "repo": "https://github.com/WASasquatch/was-node-suite-comfyui",
+      "pinned_commit": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
+      "provides": [
+        "Image Blank",
+        "Image Rembg (Remove Background)",
+        "Text Concatenate",
+        "Text Multiline",
+        "Upscale Model Loader"
+      ],
+      "instances_in_workflow": 13
+    },
+    {
+      "id": "Comfyui-PainterFluxImageEdit",
+      "source": "git",
+      "repo": "https://github.com/princepainter/Comfyui-PainterFluxImageEdit",
+      "pinned_commit": "34f94bd579cd7d9948367bdfa01cdb77655b6b40",
+      "provides": [
+        "PainterFluxImageEdit"
+      ],
+      "instances_in_workflow": 2
+    }
+  ],
+  "models": [
+    {
+      "filename": "flux-2-klein-9b.safetensors",
+      "dest": "models/diffusion_models",
+      "size_bytes": 18157185168,
+      "sha256": "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58",
+      "hf_repo": "black-forest-labs/FLUX.2-klein-9b",
+      "hf_path": "flux-2-klein-9b.safetensors",
+      "gated": true,
+      "gated_note": "Accept the licence on the model page and use an HF token; without one the download returns HTTP 307 to the auth wall.",
+      "required_by": "UNETLoader x5"
+    },
+    {
+      "filename": "qwen_3_8b_fp8mixed.safetensors",
+      "dest": "models/text_encoders",
+      "size_bytes": 8664848742,
+      "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+      "hf_repo": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+      "hf_path": "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+      "gated": false,
+      "required_by": "CLIPLoader x5, type flux2 (Klein uses a Qwen3-8B text encoder, not Mistral)"
+    },
+    {
+      "filename": "flux2-vae.safetensors",
+      "dest": "models/vae",
+      "size_bytes": 336211292,
+      "hf_repo": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+      "hf_path": "split_files/vae/flux2-vae.safetensors",
+      "gated": false,
+      "required_by": "VAELoader x5",
+      "note": "The machine this workflow was authored on carries a re-keyed variant of the same 251 tensors (336213556 bytes, flattened key names). The published file above is the canonical one and is what a fresh install should use."
+    },
+    {
+      "filename": "Realism_Engine_Klein_V2.safetensors",
+      "dest": "models/loras/klein",
+      "size_bytes": 1090563784,
+      "sha256": "97140b103cb601f83db8ecb854ee804bd4261fba056ecf7802c65359525b0a8a",
+      "hf_repo": "Rarriemf/realismengineklein",
+      "hf_path": "Realism_Engine_Klein_V2.safetensors",
+      "gated": false,
+      "required_by": "LoraLoaderModelOnly id=532, strength 1.0",
+      "note": "Same file is mirrored as Keltezaa/flux2_klein_9B_Realism_Engine_V2 under the name Realism_Engine_V2.safetensors. Use the Rarriemf copy so no rename is needed."
+    },
+    {
+      "filename": "f2k_consist_20260225.safetensors",
+      "dest": "models/loras/klein",
+      "size_bytes": 331379600,
+      "hf_repo": "happyinhappy/f2k-consist-klein9b-lora",
+      "hf_path": "f2k_consist_20260225.safetensors",
+      "gated": false,
+      "custom": true,
+      "required_by": "LoraLoaderModelOnly id=542, strength 1.5",
+      "note": "Custom LoRA trained for this workflow with ai-toolkit 0.7.20 on flux2_klein_9b, rank 64 BF16, step 13500 / epoch 96, internal name 'white-build'. A different 570458992-byte file exists on HF under the same filename; it is NOT this LoRA and will not reproduce the result.",
+      "sha256": "90a874e6931d7e38c680e7e22c04052eecf6c718753270735706d7630fdf9d65"
+    },
+    {
+      "filename": "1x-ITF-SkinDiffDetail-Lite-v1.pth",
+      "dest": "models/upscale_models",
+      "size_bytes": 20099337,
+      "sha256": "94d368b633614958f84f335b129fd85abd30200e8fbc575b859ba6762116222b",
+      "hf_repo": "uwg/upscaler",
+      "hf_path": "ESRGAN/1x-ITF-SkinDiffDetail-Lite-v1.pth",
+      "gated": false,
+      "required_by": "Upscale Model Loader (WAS)"
+    }
+  ],
+  "auto_downloaded_on_first_run": [
+    {
+      "what": "microsoft/Florence-2-base-ft",
+      "who": "DownloadAndLoadFlorence2Model",
+      "lands_in": "models/LLM/Florence-2-base-ft",
+      "size_hint": "~463 MB safetensors + config; needs trust_remote_code files"
+    },
+    {
+      "what": "u2net.onnx",
+      "who": "Image Rembg (Remove Background)",
+      "lands_in": "~/.u2net/u2net.onnx",
+      "size_hint": "176 MB"
+    },
+    {
+      "what": "selfie_multiclass_256x256.tflite and pose_landmarker_lite.task",
+      "who": "Happyin_Mask_PersonMask, Happyin_Router_HeadwearGate",
+      "lands_in": "models/mediapipe",
+      "size_hint": "small"
+    },
+    {
+      "what": "hustvl/vitmatte-small-composition-1k",
+      "who": "Happyin_Mask_PersonMask when matting_method=VITMatte (8 of the 9 instances)",
+      "lands_in": "the HuggingFace hub cache, not models/",
+      "size_hint": "~103 MB",
+      "gotcha": "This one is easy to miss because no loader dropdown shows it. If a container image is rebuilt or the HF cache is not persisted, it silently disappears and the first PersonMask run stalls on a live download."
+    }
+  ]
+}
