@@ -27,6 +27,42 @@ python scripts/verify.py --url http://127.0.0.1:8188
 [AGENT_BRIEF.md](AGENT_BRIEF.md) if you want to hand this to a coding agent
 rather than run it yourself — it is written to be pasted verbatim.
 
+## Actually running it
+
+Installing is not running. Once `verify.py` exits `0`:
+
+1. **Open ComfyUI** and load `workflow/face_swap_klein_9b.json` — drag the file
+   onto the canvas, or use Workflow → Open.
+2. **Put your two photos in `ComfyUI/input/`.** `install.py` has already placed
+   two labelled placeholders there so the graph loads without red nodes; they are
+   cards, not faces, and a run with them produces nothing useful. Replace them, or
+   point the nodes at your own files:
+
+   | node | title | which photo |
+   |---|---|---|
+   | 103 | `images_original` | the **target**: the person whose body, lighting and skin tone stay |
+   | 105 | `images_reference` | the **reference**: the face and head that get swapped on |
+
+   The filenames the graph ships with are `result_00.jpg` (node 103) and
+   `input_00.jpg` (node 105). The names are historical and read backwards — go by
+   the node titles, not the filenames.
+3. **Queue it.** The first run is slow and mostly silent: Florence-2, `u2net`,
+   the mediapipe assets and the VITMatte weights all download on demand, roughly
+   750 MB in total, before any pixel is produced.
+
+If nothing appears to start at all, look at the ComfyUI console rather than the
+canvas. A graph that fails validation is refused before it reaches the queue, and
+the browser shows very little — the console prints the exact node and value:
+
+```
+Failed to validate prompt for output 723:
+* Happyin_Mask_PersonMask 212:
+  - Value not in list: crop_mode: '%' not in ['crop', 'disabled']
+```
+
+That specific failure is fixed in this repo (see below), but the shape recurs
+whenever a graph meets a different version of a node. `verify.py` now predicts it.
+
 ## What gets installed
 
 ### Node packs
@@ -94,6 +130,21 @@ python -c "from transformers import VitMatteForImageMatting as M; M.from_pretrai
 `scripts/verify.py` derives its requirement list **from the workflow JSON on
 every run** instead of keeping a second copy in the script. A hand-maintained
 gate drifts away from the graph it guards; this one cannot.
+
+It predicts what ComfyUI's own validator would say, so a `0` means the graph can
+actually be queued — not merely that the pieces are on disk. Three things it
+checks that a "do the files exist" check cannot:
+
+- **Widget arity.** If a node has gained an input since the graph was saved, the
+  saved array is one short and every value after the new input is read one slot
+  early. ComfyUI refuses the whole prompt; nothing reaches the queue. This
+  happened to this very workflow — see the fix below.
+- **Enum values.** Every dropdown value is checked against what the installed
+  node actually accepts, accounting for the invisible `control_after_generate`
+  slot the frontend stores after a seed.
+- **Operator inputs.** The two `LoadImage` filenames are reported separately,
+  because they depend on your photos rather than on the install. `--require-inputs`
+  makes them blocking when you want run-readiness rather than install-readiness.
 
 It reports three outcomes rather than two:
 

@@ -128,6 +128,39 @@ def install_packs(manifest, root, plan):
     return problems
 
 
+def install_inputs(root, plan):
+    """Put the two LoadImage files the graph names into ComfyUI/input/.
+
+    Without them the graph is complete and still cannot be queued: LoadImage
+    validates its filename against the contents of input/, so on a fresh machine
+    it rejects the prompt exactly the way a missing node would. The shipped files
+    are labelled placeholders, not photographs of anyone - they exist so the
+    graph loads green and the operator can see which node wants which picture.
+
+    An existing file is never overwritten: by the second run these are usually
+    the operator's own photos.
+    """
+    src_dir = os.path.join(REPO, "assets", "sample_inputs")
+    dest_dir = os.path.join(root, "input")
+    log("[inputs] LoadImage files -> input/")
+    if not os.path.isdir(src_dir):
+        return ["sample inputs missing from this repo: %s" % src_dir]
+    if plan:
+        log("  $ mkdir -p %s" % dest_dir)
+        for fn in sorted(os.listdir(src_dir)):
+            log("  $ cp -n %s %s" % (os.path.join(src_dir, fn), os.path.join(dest_dir, fn)))
+        return []
+    os.makedirs(dest_dir, exist_ok=True)
+    for fn in sorted(os.listdir(src_dir)):
+        dest = os.path.join(dest_dir, fn)
+        if os.path.isfile(dest):
+            log("  %s already there, left alone" % fn)
+            continue
+        shutil.copy2(os.path.join(src_dir, fn), dest)
+        log("  placed %s (labelled placeholder - replace it with your own photo)" % fn)
+    return []
+
+
 def hf_url(repo, path):
     return "https://huggingface.co/%s/resolve/main/%s" % (repo, path)
 
@@ -225,6 +258,8 @@ def main(argv=None):
     ap.add_argument("--plan", action="store_true", help="print what would run, execute nothing")
     ap.add_argument("--skip-models", action="store_true")
     ap.add_argument("--skip-packs", action="store_true")
+    ap.add_argument("--skip-inputs", action="store_true",
+                    help="do not place the placeholder LoadImage files into input/")
     ap.add_argument("--skip-digest", action="store_true",
                     help="do not sha256 files that already match on size (faster, weaker)")
     args = ap.parse_args(argv)
@@ -257,6 +292,10 @@ def main(argv=None):
             if err:
                 log("  ! " + err)
                 problems.append(err)
+
+    if not args.skip_inputs:
+        log("")
+        problems += install_inputs(root, args.plan)
 
     log("")
     auto = manifest.get("auto_downloaded_on_first_run", [])

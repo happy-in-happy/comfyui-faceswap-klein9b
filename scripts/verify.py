@@ -107,26 +107,76 @@ def enum_for(object_info, cls, field):
     return value if isinstance(value, list) else None
 
 
-# Input datatypes that arrive over a link and therefore occupy no widget slot.
-LINK_TYPES = {"IMAGE", "MASK", "LATENT", "MODEL", "CLIP", "VAE", "CONDITIONING",
-              "GUIDER", "SAMPLER", "SIGMAS", "NOISE", "UPSCALE_MODEL", "CONTROL_NET",
-              "CLIP_VISION", "CLIP_VISION_OUTPUT", "STYLE_MODEL", "CROP_DATA", "*"}
+# The datatypes that render as a widget. Everything else arrives over a link and
+# occupies no widgets_values slot.
+#
+# This is deliberately a list of what IS a widget, not a list of what is a link.
+# The other way round looks equivalent and is not: every custom node pack invents
+# its own link types (FL2MODEL, CROP_DATA, ...), and any type missing from a
+# denylist would be silently counted as a widget, shifting every value after it.
+# That mistake cost a false accusation against a perfectly good Florence2Run node.
+WIDGET_TYPES = {"INT", "FLOAT", "STRING", "BOOLEAN", "COMBO"}
 
 
-def widget_arity(object_info, cls):
-    """How many widgets_values entries a node's required inputs demand."""
+def widget_slots(object_info, cls):
+    """The widgets_values slots a node's required inputs occupy, in order.
+
+    Each entry is (input_name, enum_or_None). A seed-like input declares
+    `control_after_generate` in its metadata, and the frontend then stores a
+    SECOND value right after it ('randomize', 'fixed', ...). That extra slot is
+    real: ignore it and every value after a seed reads one position early, which
+    is indistinguishable from genuine drift.
+    """
     try:
         required = object_info[cls]["input"]["required"]
     except (KeyError, TypeError):
         return None
-    count = 0
-    for value in required.values():
-        spec = value[0] if isinstance(value, list) and value else None
-        if isinstance(spec, list):        # an enum is always a widget
-            count += 1
-        elif isinstance(spec, str) and spec not in LINK_TYPES and not spec.startswith("COMFY_"):
-            count += 1
-    return count
+    slots = []
+    for name, value in required.items():
+        if not isinstance(value, list) or not value:
+            continue
+        spec = value[0]
+        meta = value[1] if len(value) > 1 and isinstance(value[1], dict) else {}
+        if isinstance(spec, list):
+            slots.append((name, spec))
+        elif isinstance(spec, str) and spec in WIDGET_TYPES:
+            slots.append((name, None))
+        else:
+            continue
+        if meta.get("control_after_generate"):
+            slots.append((name + ".control_after_generate", None))
+    return slots
+
+
+def widget_arity(object_info, cls):
+    """How many widgets_values entries a node's required inputs demand."""
+    slots = widget_slots(object_info, cls)
+    return None if slots is None else len(slots)
+
+
+def check_enum_values(object_info, nodes, operator_inputs=("LoadImage",)):
+    """Predict the enum rejections ComfyUI would raise, before you queue anything.
+
+    Returns (defects, operator). `operator` holds values that depend on files the
+    person running this supplies -- LoadImage names -- which are missing on a
+    fresh install by definition and are not a fault in the repository.
+    """
+    defects, operator = [], []
+    for n in nodes:
+        cls = n.get("type")
+        vals = n.get("widgets_values")
+        if cls not in object_info or not isinstance(vals, list):
+            continue
+        slots = widget_slots(object_info, cls)
+        if not slots or len(vals) < len(slots):
+            continue  # arity is reported separately; mapping would be meaningless
+        for (name, enum), value in zip(slots, vals):
+            if enum is None or value in enum:
+                continue
+            line = ("node %s (%s) %s = %r is not one of the %d values the installed "
+                    "node accepts" % (n.get("id"), cls, name, value, len(enum)))
+            (operator if cls in operator_inputs else defects).append(line)
+    return defects, operator
 
 
 def check_widget_arity(object_info, nodes):
@@ -164,8 +214,12 @@ def check_online(object_info, node_types, models, nodes=None):
     missing_nodes = [t for t in node_types if t not in object_info]
     for t in missing_nodes:
         problems.append("node type not registered: %s" % t)
+    notes = []
     if nodes:
         problems.extend(check_widget_arity(object_info, nodes))
+        defects, operator = check_enum_values(object_info, nodes)
+        problems.extend(defects)
+        notes.extend(operator)
     for cls, field, _subdir, name in models:
         if cls in missing_nodes:
             continue  # already reported; its enum cannot exist
@@ -174,7 +228,7 @@ def check_online(object_info, node_types, models, nodes=None):
             problems.append("loader %s has no %s enum to check" % (cls, field))
         elif name not in enum:
             problems.append("model not visible to %s.%s: %s" % (cls, field, name))
-    return problems, len(node_types), len(models)
+    return problems, len(node_types), len(models), notes
 
 
 def check_offline(comfy_root, node_types, models):
@@ -215,11 +269,20 @@ def check_offline(comfy_root, node_types, models):
     return problems, 0, len(models)
 
 
-def report(problems, n_nodes, n_models, mode, can_pass=True):
+def report(problems, n_nodes, n_models, mode, can_pass=True, notes=(), notes_block=False):
     print("mode: %s" % mode)
     if n_nodes:
         print("node types required by the workflow: %d" % n_nodes)
     print("model files required by the workflow: %d" % n_models)
+    if notes:
+        print()
+        print("input images the operator must supply (%d) - not a fault in this repo:" % len(notes))
+        for note in notes:
+            print("  - %s" % note)
+        print("  Put your own photos in ComfyUI/input/ and point the two LoadImage")
+        print("  nodes at them, or run install.py which copies labelled placeholders.")
+        if notes_block:
+            problems = list(problems) + list(notes)
     if problems:
         print()
         print("FAIL - %d problem(s):" % len(problems))
@@ -261,26 +324,26 @@ def self_test():
         "UNETLoader": {"input": {"required": {"unet_name": [["m.safetensors"]]}}},
         "Happyin_Mask_PersonMask": {"input": {"required": {}}},
     }
-    probs, _, _ = check_online(good, types, models)
+    probs, _, _, _ = check_online(good, types, models)
     if probs:
         failures.append("control 1 (everything present) should be clean, got %r" % probs)
 
     # must go red: node class absent
-    probs, _, _ = check_online({k: v for k, v in good.items() if k != "Happyin_Mask_PersonMask"}, types, models)
+    probs, _, _, _ = check_online({k: v for k, v in good.items() if k != "Happyin_Mask_PersonMask"}, types, models)
     if not probs:
         failures.append("control 2 (missing node) stayed green")
 
     # must go red: model absent from the enum
     bad = json.loads(json.dumps(good))
     bad["UNETLoader"]["input"]["required"]["unet_name"] = [["other.safetensors"]]
-    probs, _, _ = check_online(bad, types, models)
+    probs, _, _, _ = check_online(bad, types, models)
     if not probs:
         failures.append("control 3 (missing model) stayed green")
 
     # must go red: loader present but carrying no enum at all
     bad2 = json.loads(json.dumps(good))
     bad2["UNETLoader"]["input"]["required"]["unet_name"] = ["STRING"]
-    probs, _, _ = check_online(bad2, types, models)
+    probs, _, _, _ = check_online(bad2, types, models)
     if not probs:
         failures.append("control 4 (enum absent) stayed green")
 
@@ -344,6 +407,8 @@ def main(argv=None):
                     help="check files on disk instead of asking a running ComfyUI")
     ap.add_argument("--workflow", default=default_wf)
     ap.add_argument("--timeout", type=float, default=90.0)
+    ap.add_argument("--require-inputs", action="store_true",
+                    help="also fail when the LoadImage inputs are missing (run-readiness, not install-readiness)")
     ap.add_argument("--self-test", action="store_true",
                     help="prove this checker can report failure, then exit")
     args = ap.parse_args(argv)
@@ -359,18 +424,20 @@ def main(argv=None):
             if not args.comfy_root:
                 raise Unknown("--offline needs --comfy-root")
             problems, n_nodes, n_models = check_offline(args.comfy_root, node_types, models)
+            notes = []
             mode = "offline (files on disk; node registration NOT proven, so PASS is not available)"
             can_pass = False
         else:
             oi = fetch_object_info(args.url, args.timeout)
-            problems, n_nodes, n_models = check_online(oi, node_types, models, nodes)
+            problems, n_nodes, n_models, notes = check_online(oi, node_types, models, nodes)
             mode = "online via %s/object_info" % args.url.rstrip("/")
     except Unknown as exc:
         print("UNKNOWN - the check did not run: %s" % exc)
         print("This is not a pass. Resolve the cause and run again.")
         return UNKNOWN
 
-    return report(problems, n_nodes, n_models, mode, can_pass=can_pass)
+    return report(problems, n_nodes, n_models, mode, can_pass=can_pass,
+                  notes=notes, notes_block=args.require_inputs)
 
 
 if __name__ == "__main__":

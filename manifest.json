@@ -7,7 +7,8 @@
     "nodes": 190,
     "links": 279,
     "distinct_node_types": 53,
-    "muted_or_bypassed_nodes": 0
+    "muted_or_bypassed_nodes": 0,
+    "widget_fix": "Happyin_Mask_PersonMask saved 18 widget values against a node that declares 19; the node had gained crop_mode at index 9, shifting every later value one slot and making ComfyUI refuse the prompt. crop_mode='crop' (the node's own default) was inserted in all nine instances, taking each from ~10/19 values landing in a valid slot to 19/19."
   },
   "runtime": {
     "comfyui_version_verified_on": "0.20.1",
@@ -196,5 +197,25 @@
       "size_hint": "~103 MB",
       "gotcha": "This one is easy to miss because no loader dropdown shows it. If a container image is rebuilt or the HF cache is not persisted, it silently disappears and the first PersonMask run stalls on a live download."
     }
-  ]
+  ],
+  "operator_inputs": {
+    "note": "LoadImage validates its filename against the contents of ComfyUI/input/, so a graph naming files that are not there is refused exactly like a missing node. install.py places the labelled placeholders below; replace them with real photos.",
+    "files": [
+      {
+        "filename": "result_00.jpg",
+        "node": 103,
+        "title": "images_original",
+        "role": "target photo - the person whose body, lighting and skin tone are kept",
+        "shipped": "assets/sample_inputs/result_00.jpg (labelled placeholder, not a photograph)"
+      },
+      {
+        "filename": "input_00.jpg",
+        "node": 105,
+        "title": "images_reference",
+        "role": "reference photo - the face and head that get swapped on",
+        "shipped": "assets/sample_inputs/input_00.jpg (labelled placeholder, not a photograph)"
+      }
+    ],
+    "dest": "input"
+  }
 }
