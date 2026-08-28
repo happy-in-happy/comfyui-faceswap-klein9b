@@ -104,17 +104,28 @@ not need to. Start a second, throwaway instance from the same tree — it reads 
 same `custom_nodes/` and `models/`, so it answers `/object_info` with exactly what
 a restarted server would, while the busy one keeps its GPU and its queue:
 
+**Do not hardcode a port — ask the kernel for a free one.** A busy machine has
+services you did not put there, and a port that merely *looks* spare may answer
+with someone else's `401`. This bit a real run: port 8199 was already taken by an
+unrelated authenticated service, so every probe came back Unauthorized.
+
 ```bash
 cd /path/to/ComfyUI
-./venv/bin/python main.py --cpu --port 8199 --disable-auto-launch &
+PORT=$(python3 -c "import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()")
+echo "using port $PORT"
+./venv/bin/python main.py --cpu --port "$PORT" --disable-auto-launch &
 # wait for it to finish loading, then:
-python scripts/verify.py --url http://127.0.0.1:8199
+python scripts/verify.py --url "http://127.0.0.1:$PORT"
 kill %1
 ```
 
-`--cpu` is the point: it touches no VRAM, so it cannot disturb a running job.
-Pick a port nothing is listening on. If the machine is idle, a plain restart is
-fine and simpler.
+`--cpu` is the point: it touches no VRAM, so it cannot disturb a running job. If
+the machine is idle, a plain restart is fine and simpler.
+
+If `verify.py` exits `2` saying it could not reach the server, check *what* is on
+that port before assuming the install failed — `curl -s -o /dev/null -w '%{http_code}'
+http://127.0.0.1:$PORT/system_stats` answering `401` means you are talking to
+something that is not your ComfyUI.
 
 ## Four things that download themselves, and the one that bites
 
