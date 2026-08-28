@@ -96,11 +96,12 @@
       "id": "Comfyui-PainterFluxImageEdit",
       "source": "git",
       "repo": "https://github.com/princepainter/Comfyui-PainterFluxImageEdit",
-      "pinned_commit": "34f94bd579cd7d9948367bdfa01cdb77655b6b40",
+      "pinned_commit": "535e8ab5f6b3c2c4e7d8e0db77dc7fc625bd101c",
       "provides": [
         "PainterFluxImageEdit"
       ],
-      "instances_in_workflow": 2
+      "instances_in_workflow": 2,
+      "pin_note": "The workflow JSON records 34f94bd579cd7d9948367bdfa01cdb77655b6b40, and that commit does not work anywhere: upstream committed the module as 'PainterFluxImageEdit' with no .py extension, so its own __init__.py cannot import it and the node never registers. 535e8ab is upstream's own fix - the rename commit - and carries the identical blob f344bcd4, so the code is byte-for-byte the same, only importable. Verified against the GitHub tree API on both commits."
     }
   ],
   "models": [

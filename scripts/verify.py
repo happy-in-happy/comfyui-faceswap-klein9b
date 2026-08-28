@@ -140,7 +140,9 @@ def check_offline(comfy_root, node_types, models):
             )
 
     # Offline we cannot ask ComfyUI whether a class registered, only whether the
-    # pack directory is present. Say so rather than implying node coverage.
+    # pack directory is present. A present directory is not a loaded node: a pack
+    # can be checked out, intact, and still fail to import. This mode therefore
+    # never returns PASS - see check_offline's caller.
     custom = os.path.join(root, "custom_nodes")
     if not os.path.isdir(custom):
         problems.append("custom_nodes/ directory absent")
@@ -159,7 +161,7 @@ def check_offline(comfy_root, node_types, models):
     return problems, 0, len(models)
 
 
-def report(problems, n_nodes, n_models, mode):
+def report(problems, n_nodes, n_models, mode, can_pass=True):
     print("mode: %s" % mode)
     if n_nodes:
         print("node types required by the workflow: %d" % n_nodes)
@@ -171,6 +173,17 @@ def report(problems, n_nodes, n_models, mode):
             print("  - %s" % p)
         return FAIL
     print()
+    if not can_pass:
+        # Measured, 2026-08-28: a tree where every file and directory was in place
+        # still failed online, because a third-party pack's module was committed
+        # without a .py extension and could not import. Offline saw a directory
+        # whose name matched and would have said PASS. A mode that cannot observe
+        # registration must not be allowed to bless it.
+        print("UNKNOWN - every file and pack directory is in place, but this mode")
+        print("cannot observe whether the node classes actually registered. A pack")
+        print("can be checked out, intact, and still fail to import.")
+        print("This is not a pass. Re-run against a running ComfyUI with --url.")
+        return UNKNOWN
     print("PASS - every requirement the workflow declares is satisfied.")
     return PASS
 
@@ -224,12 +237,30 @@ def self_test():
     except Unknown:
         pass
 
+    # control 6: the offline mode must never be able to award a PASS, because it
+    # cannot see whether a node registered. Regression guard for a measured
+    # incident on 2026-08-28, where offline reported PASS on a tree whose online
+    # check reported FAIL at the same moment.
+    import io
+    import contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        offline_clean = report([], 0, 6, "offline (test)", can_pass=False)
+        online_clean = report([], 2, 6, "online (test)", can_pass=True)
+    text = buf.getvalue()
+    if offline_clean != UNKNOWN:
+        failures.append("control 6: clean offline check returned %r, must be UNKNOWN(2)" % offline_clean)
+    if "PASS" in text.split("UNKNOWN")[0]:
+        failures.append("control 6: offline printed PASS before its UNKNOWN")
+    if online_clean != PASS:
+        failures.append("control 6: clean online check returned %r, must be PASS(0)" % online_clean)
+
     if failures:
         print("SELF-TEST FAILED")
         for f in failures:
             print("  - %s" % f)
         return FAIL
-    print("SELF-TEST OK - 5 controls, 3 of them mandatory-red, all behaved")
+    print("SELF-TEST OK - 6 controls, 3 mandatory-red plus the offline-cannot-PASS guard")
     return PASS
 
 
@@ -252,6 +283,7 @@ def main(argv=None):
     if args.self_test:
         return self_test()
 
+    can_pass = True
     try:
         nodes = read_workflow(args.workflow)
         node_types, models = requirements(nodes)
@@ -259,7 +291,8 @@ def main(argv=None):
             if not args.comfy_root:
                 raise Unknown("--offline needs --comfy-root")
             problems, n_nodes, n_models = check_offline(args.comfy_root, node_types, models)
-            mode = "offline (files on disk; node registration NOT proven)"
+            mode = "offline (files on disk; node registration NOT proven, so PASS is not available)"
+            can_pass = False
         else:
             oi = fetch_object_info(args.url, args.timeout)
             problems, n_nodes, n_models = check_online(oi, node_types, models)
@@ -269,7 +302,7 @@ def main(argv=None):
         print("This is not a pass. Resolve the cause and run again.")
         return UNKNOWN
 
-    return report(problems, n_nodes, n_models, mode)
+    return report(problems, n_nodes, n_models, mode, can_pass=can_pass)
 
 
 if __name__ == "__main__":

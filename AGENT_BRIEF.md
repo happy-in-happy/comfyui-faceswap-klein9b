@@ -48,27 +48,56 @@ not done when it prints something reassuring — read the exit code.
    succeeds — which is exactly the failure that looks like success. The other
    five models need no token.
 
+## Find ComfyUI's interpreter first — this is the step that fails silently
+
+Everything below must run with **the Python ComfyUI itself uses**, not the
+`python3` on `PATH`. They are routinely different: on one machine this was tested
+on, `PATH` gave 3.14 while ComfyUI's virtualenv was 3.12.
+
+It matters twice. `install.py` pip-installs each cloned pack's `requirements.txt`
+using `sys.executable`, so running it with the wrong interpreter puts a pack's
+dependencies somewhere ComfyUI will never look — **and nothing in the output says
+so**. The install appears to succeed and the nodes fail to import later.
+
+```bash
+COMFY=/path/to/ComfyUI
+PY="$COMFY/.venv/bin/python"          # some trees use venv/, not .venv/
+[ -x "$PY" ] || PY="$COMFY/venv/bin/python"
+[ -x "$PY" ] || { echo "find ComfyUI's interpreter before continuing"; exit 1; }
+"$PY" -V
+```
+
 ## Install
+
+Dependencies first — `install.py` needs `huggingface_hub` to fetch anything, and
+that lives in `requirements.txt`. Run this before the installer, not after:
+
+```bash
+"$PY" -m pip install -r requirements.txt
+```
+
+`insightface` builds native code; on a machine with no compiler, install a
+prebuilt wheel rather than letting pip try to build it.
+
+Then:
 
 ```bash
 export HF_TOKEN=hf_...              # required for the gated Klein checkpoint
-python scripts/install.py --comfy-root /path/to/ComfyUI
+"$PY" scripts/install.py --comfy-root "$COMFY"
 ```
 
 The script is resumable and idempotent: it skips a model whose size already
-matches the manifest, and it re-runs safely after a network failure. It never
-deletes anything.
+matches the manifest, verifies its sha256 when one is recorded, and re-runs safely
+after a network failure. It never deletes anything. Pass `--skip-digest` if you
+would rather not re-hash 28 GB on a repeat run.
 
-If you would rather do it by hand, `python scripts/install.py --plan` prints
-every clone and download as a shell command without executing them.
+If you would rather do it by hand, `"$PY" scripts/install.py --plan` prints every
+clone and download as a shell command without executing them.
 
 ## Then verify, and believe only the exit code
 
 ```bash
-# with ComfyUI running:
-python scripts/verify.py --url http://127.0.0.1:8188
-# or, without starting a server:
-python scripts/verify.py --comfy-root /path/to/ComfyUI --offline
+"$PY" scripts/verify.py --url "http://127.0.0.1:$PORT"
 ```
 
 Exit codes:
@@ -76,8 +105,23 @@ Exit codes:
 | code | meaning | what to do |
 |---|---|---|
 | `0` | every node type resolves and every model is in place | done |
-| `1` | something is genuinely missing | fix it, re-run |
-| `2` | the check could not be performed | this is **not** a pass — find out why |
+| `1` | something is genuinely missing | see below — re-running the installer alone will not fix it |
+| `2` | the check could not be performed, or could not prove registration | **not** a pass — find out why |
+
+**`--offline` can never return `0`, by design.** It checks that files and pack
+directories exist on disk, which is not the same as a node having registered — a
+pack can be checked out, complete, and still fail to import. Offline therefore
+returns `2` even when everything it can see is in order. Use it to find missing
+files quickly; never use it to decide you are finished.
+
+**When you get `1`, do not just re-run the installer.** It skips any pack whose
+directory already exists, so a second run changes nothing. Exit `1` names the
+missing node type or model; go and find out why *that* one did not register —
+usually by importing the pack directly and reading the traceback:
+
+```bash
+cd "$COMFY/custom_nodes" && "$PY" -c "import <pack_dir_name>"
+```
 
 The `2` is deliberate. A verifier that cannot reach ComfyUI, or cannot read the
 manifest, must not be indistinguishable from a verifier that found everything.
@@ -88,18 +132,17 @@ Prove the checker itself can fail before you trust a green result:
 python scripts/verify.py --self-test    # must print OK and exit 0
 ```
 
-## Pip dependencies
+## What the bundled pack imports
 
-The bundled node pack imports `mediapipe`, `pymatting`, `insightface`,
-`opencv-python`, `transformers` and `spandrel`. Install into **the interpreter
-ComfyUI actually runs with**, which is often not the `python3` on `PATH`:
+`mediapipe`, `pymatting`, `insightface`, `opencv-python`, `transformers` and
+`spandrel` — all in `requirements.txt`, which you installed with `$PY` before the
+installer ran.
 
-```bash
-/path/to/comfy/venv/bin/python -m pip install -r requirements.txt
-```
-
-`insightface` builds native code; on a machine with no compiler, install a
-prebuilt wheel instead of letting pip try to build it.
+`install.py` will also pull in whatever the cloned packs list in their own
+`requirements.txt`, including for packs that were already present before you
+started. On a machine where a pack directory existed but its dependencies did
+not, that is the difference between a node registering and a node failing to
+import with nothing having said why.
 
 ## After installing, ComfyUI has to be restarted — but maybe not the one that matters
 
@@ -118,17 +161,28 @@ with someone else's `401`. This bit a real run: port 8199 was already taken by a
 unrelated authenticated service, so every probe came back Unauthorized.
 
 ```bash
-cd /path/to/ComfyUI
+cd "$COMFY"
 PORT=$(python3 -c "import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()")
 echo "using port $PORT"
-./venv/bin/python main.py --cpu --port "$PORT" --disable-auto-launch &
+"$PY" main.py --cpu --port "$PORT" --disable-auto-launch &
 # wait for it to finish loading, then:
-python scripts/verify.py --url "http://127.0.0.1:$PORT"
+"$PY" scripts/verify.py --url "http://127.0.0.1:$PORT"
 kill %1
 ```
 
-`--cpu` is the point: it touches no VRAM, so it cannot disturb a running job. If
-the machine is idle, a plain restart is fine and simpler.
+`--cpu` keeps the throwaway instance off the GPU for its own work. It does **not**
+guarantee zero VRAM: measured on a real run, a `--cpu` instance still held 718 MiB
+because some custom node in the tree creates a CUDA context at import time. On a
+143 GB card next to a job holding 49 GB that is nothing; on a nearly-full card it
+is not. Check before you launch:
+
+```bash
+nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader
+```
+
+If the card has under a gigabyte spare, do not start a second instance at all —
+wait for the running job, or verify on a machine that is idle. If the machine is
+idle to begin with, a plain restart is fine and simpler.
 
 If `verify.py` exits `2` saying it could not reach the server, check *what* is on
 that port before assuming the install failed — `curl -s -o /dev/null -w '%{http_code}'

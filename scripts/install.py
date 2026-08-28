@@ -16,6 +16,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -95,7 +96,17 @@ def install_packs(manifest, root, plan):
 
         log("[pack] %s" % pid)
         if os.path.isdir(dest) and not plan:
-            log("  already present, left as is")
+            # Present is not the same as installed: a pack cloned by someone else,
+            # or by an earlier interrupted run, may have none of its Python
+            # dependencies. Leave its source alone but make sure its requirements
+            # are satisfied, or it will fail to import with nothing having said so.
+            log("  already present, left as is; checking its requirements")
+            reqs = os.path.join(dest, "requirements.txt")
+            if os.path.isfile(reqs):
+                if not run([sys.executable, "-m", "pip", "install", "-q", "-r", reqs]):
+                    problems.append("pip install failed for pre-existing %s" % pid)
+            else:
+                log("  no requirements.txt")
             continue
         if not run(["git", "clone", "--depth", "50", pack["repo"], dest], plan=plan):
             problems.append("clone failed: %s" % pack["repo"])
@@ -121,7 +132,33 @@ def hf_url(repo, path):
     return "https://huggingface.co/%s/resolve/main/%s" % (repo, path)
 
 
-def download(model, root, plan, token):
+def sha256_of(path, chunk=1 << 22):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def digest_problem(model, dest):
+    """Return a message if the manifest gives a sha256 and the file disagrees.
+
+    Size alone is a weak identity: this manifest exists partly because a
+    different LoRA is published under one of these exact filenames. Size caught
+    that twin, but it would not catch same-size corruption or a truncated resume.
+    """
+    want = model.get("sha256")
+    if not want or len(want) != 64:
+        return None
+    got = sha256_of(dest)
+    if got != want:
+        return ("%s has the right size but the wrong contents: sha256 %s, manifest says %s"
+                % (model["filename"], got[:16] + "...", want[:16] + "..."))
+    log("  sha256 verified")
+    return None
+
+
+def download(model, root, plan, token, check_digest=True):
     dest_dir = os.path.join(root, model["dest"].replace("/", os.sep))
     dest = os.path.join(dest_dir, model["filename"])
     want = model.get("size_bytes")
@@ -136,8 +173,8 @@ def download(model, root, plan, token):
     if os.path.isfile(dest):
         have = os.path.getsize(dest)
         if want and have == want:
-            log("  already present with the expected size, skipped")
-            return None
+            log("  already present with the expected size")
+            return digest_problem(model, dest) if check_digest else None
         log("  present but %d bytes, manifest says %d - redownloading" % (have, want))
 
     os.makedirs(dest_dir, exist_ok=True)
@@ -178,7 +215,7 @@ def download(model, root, plan, token):
         return ("%s downloaded but is %d bytes, manifest says %d"
                 % (model["filename"], have, want))
     log("  ok, %d bytes" % have)
-    return None
+    return digest_problem(model, dest) if check_digest else None
 
 
 def main(argv=None):
@@ -188,6 +225,8 @@ def main(argv=None):
     ap.add_argument("--plan", action="store_true", help="print what would run, execute nothing")
     ap.add_argument("--skip-models", action="store_true")
     ap.add_argument("--skip-packs", action="store_true")
+    ap.add_argument("--skip-digest", action="store_true",
+                    help="do not sha256 files that already match on size (faster, weaker)")
     args = ap.parse_args(argv)
 
     manifest = load_manifest(args.manifest)
@@ -214,7 +253,7 @@ def main(argv=None):
         log("")
         for model in manifest["models"]:
             log("[model] %s -> %s" % (model["filename"], model["dest"]))
-            err = download(model, root, args.plan, token)
+            err = download(model, root, args.plan, token, check_digest=not args.skip_digest)
             if err:
                 log("  ! " + err)
                 problems.append(err)
