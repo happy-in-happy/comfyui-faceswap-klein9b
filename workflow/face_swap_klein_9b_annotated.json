@@ -6818,6 +6818,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         0,
         20,
@@ -6826,7 +6827,6 @@
         false,
         "smart",
         "Qwen Edit",
-        false,
         false
       ],
       "color": "#2a5a3a",
@@ -7224,6 +7224,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         0,
         100,
@@ -7232,7 +7233,6 @@
         true,
         "off",
         "off",
-        false,
         false
       ],
       "color": "#2a5a3a",
@@ -7475,6 +7475,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         50,
         10,
@@ -7483,7 +7484,6 @@
         true,
         "off",
         "FLUX Klein",
-        false,
         false
       ],
       "color": "#2a5a3a",
@@ -7959,6 +7959,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         0,
         0,
@@ -7967,8 +7968,7 @@
         true,
         "off",
         "off",
-        true,
-        false
+        true
       ],
       "color": "#2a5a3a",
       "bgcolor": "#1a3a2a"
@@ -8516,6 +8516,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         0,
         20,
@@ -8524,7 +8525,6 @@
         true,
         "smart",
         "Qwen Edit",
-        false,
         false
       ],
       "color": "#2a5a3a",
@@ -8703,6 +8703,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         0,
         20,
@@ -8711,7 +8712,6 @@
         false,
         "off",
         "Qwen Edit",
-        false,
         false
       ],
       "color": "#2a5a3a",
@@ -9837,6 +9837,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         0,
         20,
@@ -9845,7 +9846,6 @@
         false,
         "off",
         "FLUX Klein",
-        false,
         false
       ],
       "color": "#2a5a3a",
@@ -10601,6 +10601,7 @@
         false,
         false,
         0,
+        "crop",
         "%",
         50,
         100,
@@ -10609,8 +10610,7 @@
         true,
         "off",
         "off",
-        true,
-        false
+        true
       ],
       "color": "#2a5a3a",
       "bgcolor": "#1a3a2a"
